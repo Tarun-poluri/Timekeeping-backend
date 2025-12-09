@@ -1,0 +1,27 @@
+# Node modules
+/node_modules/
+
+# Environment files
+.env
+.env.*
+*.bak
+*.broken
+
+# Prisma files
+prisma/migrations/
+
+# Logs
+server.log
+
+# Package lock
+package-lock.json
+
+# Optional files
+*.swp
+.DS_Store
+
+# Build output
+dist/
+build/
+!.env.sample
+

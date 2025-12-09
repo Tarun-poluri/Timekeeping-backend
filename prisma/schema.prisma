@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   Int       @id @default(autoincrement())
+  name                 String
+  email                String    @unique
+  password             String
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  company_address      String
+  company_email        String
+  company_name         String
+  company_office_hours String
+  company_phone        String
+  department           String
+  hireDate             DateTime
+  overtimeHours        Int
+  phone                String
+  position             String
+  role                 String
+  status               String
+  userStatus           String
+  weeklyHours          Int
+  refreshToken         String?
+  refreshTokenExpiry   DateTime?
+
+  // Relations
+  timecards            Timecard[]
+}
+
+enum department_enum {
+  engineering
+  marketing
+  sales
+  hr
+  finance
+  operations
+}
+
+model Timecard {
+  id           Int          @id @default(autoincrement())
+  userId       Int
+  weekEnding   DateTime
+  totalHours   Float
+  regularHours Float
+  overtime     Float
+  status       String
+  submittedAt  DateTime
+  issues       String[]
+
+  // Relations
+  user         User         @relation(fields: [userId], references: [id])
+  dailyEntries DailyEntry[]
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([userId, weekEnding], name: "userId_weekEnding")
+}
+
+model DailyEntry {
+  id           Int       @id @default(autoincrement())
+  date         DateTime
+  startTime    String
+  endTime      String
+  breakMinutes Int
+  hours        Float
+  notes        String?
+  timecardId   Int
+
+  // Relations
+  timecard     Timecard  @relation(fields: [timecardId], references: [id])
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([timecardId, date], name: "timecardId_date")
+}

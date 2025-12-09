@@ -1,0 +1,160 @@
+I need to build a Timecard Management System using Node.js, Prisma, and Supabase.
+
+## DATABASE REQUIREMENTS:
+
+I already have a User table with these fields:
+- id (Int, auto-increment, primary key)
+- name, email, password, phone, position, department
+- hireDate, status, userStatus, weeklyHours, overtimeHours
+- company_name, company_address, company_phone, company_email, company_office_hours
+- role, refreshToken, refreshTokenExpiry
+- createdAt, updatedAt
+
+Now I need to add two new tables:
+
+### 1. WeeklyTimesheet Table (Parent - represents ONE WEEK):
+- id (Int, auto-increment, primary key)
+- userId (Int, foreign key to User)
+- weekEnding (DateTime) - Friday of that week
+- weekStarting (DateTime) - Monday of that week
+- totalHours (Float, default 0)
+- regularHours (Float, default 0)
+- overtimeHours (Float, default 0)
+- status (String, default "draft") - values: draft, pending, approved, rejected
+- issues (String[]) - array of issue messages
+- submittedAt (DateTime, nullable)
+- approvedAt (DateTime, nullable)
+- approvedBy (Int, nullable)
+- createdAt, updatedAt
+- Unique constraint on [userId, weekEnding] - one timesheet per user per week
+- Relations: belongs to User, has many Timecards
+
+### 2. Timecard Table (Child - represents ONE DAY):
+- id (Int, auto-increment, primary key)
+- weeklyTimesheetId (Int, foreign key to WeeklyTimesheet)
+- date (DateTime) - single day
+- dayOfWeek (String) - "Monday", "Tuesday", etc.
+- startTime (String) - format "09:00"
+- endTime (String) - format "17:30"
+- breakMinutes (Int, default 0)
+- hoursWorked (Float, default 0)
+- notes (String, nullable, default "")
+- createdAt, updatedAt
+- Unique constraint on [weeklyTimesheetId, date] - one timecard per day per timesheet
+- Relations: belongs to WeeklyTimesheet
+
+## BUSINESS RULES:
+
+1. One user can have multiple weekly timesheets (one per week)
+2. Each weekly timesheet can have MAXIMUM 5 timecards (Monday-Friday)
+3. User can only add ONE timecard per day
+4. User can edit all 5 timecards at once (bulk update)
+5. Status workflow: draft → pending (when submitted) → approved/rejected
+6. Only draft timesheets can be edited
+7. Week must have exactly 5 timecards before submission
+8. Auto-calculate hoursWorked: (endTime - startTime - breakMinutes) / 60
+9. Auto-calculate weekly totals: totalHours, regularHours (max 40), overtimeHours (total - 40)
+10. Auto-detect issues: if breakMinutes < 30 and hoursWorked > 6, add issue
+
+## API ENDPOINTS NEEDED:
+
+### WeeklyTimesheet Endpoints:
+1. POST /api/weekly-timesheets - Create new weekly timesheet
+   - Input: userId, weekEnding
+   - Check if timesheet already exists for this week
+   - Auto-calculate weekStarting (4 days before weekEnding)
+   
+2. GET /api/weekly-timesheets/:timesheetId - Get single timesheet with all timecards
+   - Include nested timecards ordered by date
+   - Include user details
+
+3. GET /api/users/:userId/weekly-timesheets - Get all timesheets for a user
+   - Query params: status, limit, page
+   - Include pagination
+   - Include nested timecards
+
+4. GET /api/users/:userId/weekly-timesheets/week/:weekEnding - Get specific week
+   - Return timesheet with all timecards for that week
+
+5. POST /api/weekly-timesheets/:timesheetId/submit - Submit week for approval
+   - Validate: must have exactly 5 timecards
+   - Auto-detect issues and add to issues array
+   - Change status to "pending"
+   - Set submittedAt timestamp
+
+6. PATCH /api/weekly-timesheets/:timesheetId/approve - Approve or reject
+   - Input: status (approved/rejected), approvedBy
+   - Set approvedAt timestamp
+
+7. GET /api/users/all-with-timesheets - Get all users with their timesheets
+   - Query params: status, weekEnding, limit, page
+   - Include nested timecards
+   - Add summary: totalTimesheets, pendingTimesheets, approvedTimesheets
+
+### Timecard Endpoints:
+8. POST /api/weekly-timesheets/:timesheetId/timecards - Add single timecard
+   - Input: date, startTime, endTime, breakMinutes, notes
+   - Validate: max 5 timecards per week
+   - Auto-calculate hoursWorked and dayOfWeek
+   - Auto-update weekly totals
+   - Check for duplicate date
+
+9. PATCH /api/timecards/:id - Update single timecard
+   - Input: startTime, endTime, breakMinutes, notes
+   - Validate: timesheet must be in draft status
+   - Auto-recalculate hoursWorked
+   - Auto-update weekly totals
+
+10. PUT /api/weekly-timesheets/:timesheetId/timecards/bulk - Bulk update all timecards
+    - Input: array of timecard updates with id, startTime, endTime, breakMinutes, notes
+    - Validate: timesheet must be in draft status
+    - Use Prisma transaction for all updates
+    - Auto-recalculate all hoursWorked
+    - Auto-update weekly totals after all updates
+
+11. DELETE /api/timecards/:id - Delete single timecard
+    - Auto-update weekly totals after deletion
+
+## HELPER FUNCTIONS NEEDED:
+
+1. calculateHours(startTime, endTime, breakMinutes) - Returns hours as float
+2. updateWeeklyTotals(timesheetId) - Recalculates totalHours, regularHours, overtimeHours
+3. getWeekEnding(date) - Returns Friday of that week
+4. getDayOfWeek(date) - Returns "Monday", "Tuesday", etc.
+
+## VALIDATION REQUIREMENTS:
+
+1. StartTime must be before endTime
+2. BreakMinutes must be >= 0
+3. Date must be within the week (between weekStarting and weekEnding)
+4. Cannot add timecard to submitted/approved timesheet
+5. Cannot edit submitted/approved timesheet
+6. Cannot delete timecard from submitted/approved timesheet
+7. Check for duplicate dates per timesheet
+
+## RESPONSE FORMAT:
+
+All responses should include:
+- Success responses with proper HTTP status codes (200, 201)
+- Error responses with proper HTTP status codes (400, 404, 500)
+- Error messages in format: { error: "message" }
+- Pagination format: { total, page, limit, totalPages }
+
+## ADDITIONAL REQUIREMENTS:
+
+1. Use try-catch blocks for all database operations
+2. Use Prisma transactions for bulk operations
+3. Return proper error messages for validation failures
+4. Include proper indexes in Prisma schema for performance
+5. Use onDelete: Cascade for foreign keys
+6. Handle unique constraint violations (P2002 error code)
+7. Order timecards by date ascending by default
+
+Please implement:
+1. Complete Prisma schema with all models and relations
+2. All API endpoints with full validation
+3. All helper functions
+4. Proper error handling
+5. Comments explaining business logic
+
+Make sure the code is production-ready with proper validation and error handling.
