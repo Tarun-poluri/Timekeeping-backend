@@ -143,6 +143,13 @@ export const TimecardService = {
     );
 
     await TimecardService.recalculateTimecard(timecard.id);
+    await prisma.timecard.update({
+      where: { id: timecard.id },
+      data: {
+        status: "pending",
+        submittedAt: new Date(),
+      },
+    });
     return { timecardId: timecard.id, entries: created };
   },
 
