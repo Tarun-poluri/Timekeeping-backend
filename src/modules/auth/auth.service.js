@@ -80,26 +80,36 @@ export const AuthService = {
     return sanitizeUser(user);
   },
  async deleteUserById(id, requester) {
-  if (requester.role !== "admin") {
-    const err = new Error("You are not authorized to delete users");
-    err.name = "UnauthorizedError";
-    err.status = 403;
-    throw err;
-  }
-
-  const userToDelete = await UserModel.findById(id);
-  if (!userToDelete) {
-    const err = new Error("User not found");
-    err.name = "NotFoundError";
-    err.status = 404;
-    throw err;
-  }
-
-  const deletedUser = await UserModel.deleteById(id);
-
-  return sanitizeUser(deletedUser);
-}
-,
+    // Only admins can delete users
+    if (requester.role !== "admin") {
+      const err = new Error("You are not authorized to delete users");
+      err.name = "UnauthorizedError";
+      err.status = 403;
+      throw err;
+    }
+    // Make sure the user exists
+    const userToDelete = await UserModel.findById(id);
+    if (!userToDelete) {
+      const err = new Error("User not found");
+      err.name = "NotFoundError";
+      err.status = 404;
+      throw err;
+    }
+    // If the user has timecards, delete their dependent records first
+    // to avoid foreign key constraint errors.
+    await prisma.dailyEntry.deleteMany({
+      where: {
+        timecard: { userId: id },
+      },
+    });
+    await prisma.timecard.deleteMany({
+      where: {
+        userId: id,
+      },
+    });
+    const deletedUser = await UserModel.deleteById(id);
+    return sanitizeUser(deletedUser);
+  },
 
   async updatePassword(id, oldPassword, newPassword) {
     const user = await UserModel.findById(id);
