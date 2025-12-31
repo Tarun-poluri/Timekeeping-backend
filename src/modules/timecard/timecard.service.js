@@ -168,29 +168,61 @@ export const TimecardService = {
     const { page = 1, perPage = 10, startDate, endDate, userId, status, search } = query;
     const skip = (Number(page) - 1) * Number(perPage);
     const take = Number(perPage);
-    
-    // Build user search conditions
+    // Build search conditions
+    let weekEndingFilter = {};
     let userWhere = {};
-    if (search && search.trim() !== '') {
-      const searchTerm = search.trim();
-      userWhere = {
-        OR: [
-          { name: { contains: searchTerm, mode: 'insensitive' } },
-          { department: { contains: searchTerm, mode: 'insensitive' } },
-          ...(Number.isNaN(Number(searchTerm)) ? [] : [{ id: Number(searchTerm) }])
-        ]
+    // Handle date range filters
+    if (startDate || endDate) {
+      weekEndingFilter = {
+        weekEnding: {
+          ...(startDate ? { gte: new Date(startDate) } : {}),
+          ...(endDate ? { lte: new Date(endDate) } : {}),
+        }
       };
     }
-    
+    // Handle search parameter
+    if (search && search.trim() !== '') {
+      const searchTerm = search.trim();
+      // Check if search term is a date (YYYY-MM-DD format)
+      const dateMatch = searchTerm.match(/^\d{4}-\d{2}-\d{2}$/);
+      if (dateMatch) {
+        const searchDate = new Date(searchTerm);
+        if (!isNaN(searchDate.getTime())) {
+          // Search by week ending date
+          const startOfDay = new Date(searchDate);
+          startOfDay.setHours(0, 0, 0, 0);
+          const endOfDay = new Date(searchDate);
+          endOfDay.setHours(23, 59, 59, 999);
+          // Merge with existing date filter if present
+          if (Object.keys(weekEndingFilter).length > 0) {
+            weekEndingFilter.weekEnding = {
+              ...weekEndingFilter.weekEnding,
+              gte: weekEndingFilter.weekEnding.gte || startOfDay,
+              lte: weekEndingFilter.weekEnding.lte || endOfDay,
+            };
+          } else {
+            weekEndingFilter = {
+              weekEnding: { gte: startOfDay, lte: endOfDay }
+            };
+          }
+        }
+      } else {
+        // If not a date, search by user name, department, or user ID
+        userWhere = {
+          OR: [
+            { name: { contains: searchTerm, mode: 'insensitive' } },
+            { department: { contains: searchTerm, mode: 'insensitive' } },
+            ...(Number.isNaN(Number(searchTerm)) ? [] : [{ id: Number(searchTerm) }])
+          ]
+        };
+      }
+    }
     const where = {
-      ...(startDate || endDate
-        ? { weekEnding: { gte: startDate ? new Date(startDate) : undefined, lte: endDate ? new Date(endDate) : undefined } }
-        : {}),
+      ...(Object.keys(weekEndingFilter).length > 0 ? weekEndingFilter : {}),
       ...(userId ? { userId: Number(userId) } : {}),
       ...(status ? { status } : {}),
       ...(Object.keys(userWhere).length > 0 ? { user: userWhere } : {}),
     };
-
     const [items, total] = await Promise.all([
       prisma.timecard.findMany({
         where,
@@ -201,7 +233,6 @@ export const TimecardService = {
       }),
       prisma.timecard.count({ where }),
     ]);
-
     return {
       items,
       pagination: {
